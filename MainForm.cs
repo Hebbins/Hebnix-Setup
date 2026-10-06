@@ -17,7 +17,10 @@ namespace Hebnix_Updater
         private const string FullEdition = "Hebnix";
         private const string LiteEdition = "Hebnix Lite";
         private static readonly string[] LiteExecutableNames = { "Hebnix Lite.exe", "Hebnite Lite.exe" };
-        private static readonly HttpClient HttpClient = new HttpClient();
+        // the version check is on the startup path so it gets a short timeout, downloads
+        // get a long one because the lite build can take over a minute to start sending
+        private static readonly HttpClient VersionClient = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        private static readonly HttpClient HttpClient = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
         private readonly string installDirectory;
         private readonly string installStatePath;
         private Dictionary<string, string> installedVersions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -53,7 +56,6 @@ namespace Hebnix_Updater
                 CloseProcess("Hebnix");
                 installedVersions = ReadInstalledVersions();
                 ScanInstallation();
-                latestVersion = GetLatestVersionAsync().GetAwaiter().GetResult();
                 ApplyInstallationState();
             }
             catch (Exception exception)
@@ -64,12 +66,39 @@ namespace Hebnix_Updater
             }
         }
 
-        protected override void OnShown(EventArgs eventArgs)
+        protected override async void OnShown(EventArgs eventArgs)
         {
             base.OnShown(eventArgs);
             if (!string.IsNullOrWhiteSpace(startupError))
             {
                 BeginInvoke(new Action(() => ShowError(startupError)));
+            }
+
+            await CheckLatestVersionAsync();
+        }
+
+        // runs after the window is visible so a slow or offline API can't hold up startup
+        private async Task CheckLatestVersionAsync()
+        {
+            SetButtonsEnabled(false);
+            foreach (var updateStatus in new[] { HebnixUpdateStatus, LiteUpdateStatus })
+            {
+                updateStatus.BackColor = Color.MidnightBlue;
+                updateStatus.Text = "Checking...";
+            }
+
+            try
+            {
+                latestVersion = await GetLatestVersionAsync();
+            }
+            catch (Exception exception)
+            {
+                ShowError("Could not check for the latest Hebnix version.\r\n\r\n" + exception);
+            }
+            finally
+            {
+                ApplyInstallationState();
+                SetButtonsEnabled(true);
             }
         }
 
@@ -78,10 +107,10 @@ namespace Hebnix_Updater
             using (var request = new HttpRequestMessage(HttpMethod.Get, ApiBaseUrl + "/info"))
             {
                 request.Headers.UserAgent.ParseAdd("Hebnix-Updater");
-                using (var response = await HttpClient.SendAsync(request).ConfigureAwait(false))
+                using (var response = await VersionClient.SendAsync(request))
                 {
                     response.EnsureSuccessStatusCode();
-                    var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                    var json = await response.Content.ReadAsStringAsync();
                     var info = JsonConvert.DeserializeObject<HebnixApiResponse>(json);
                     if (info == null || string.IsNullOrWhiteSpace(info.latest_version))
                     {
@@ -268,12 +297,13 @@ namespace Hebnix_Updater
                 await Task.Run(() => CloseProcess(Path.GetFileNameWithoutExtension(executableName)));
                 if (lastEdition)
                 {
+                    // elevated cleanup goes first, in one UAC prompt, so declining it
+                    // leaves the install untouched instead of half removed
+                    var cleanupArguments = options.KeepTap
+                        ? new[] { "--cleanup-spoofer" }
+                        : new[] { "--cleanup-spoofer", "--cleanup-tap" };
+                    await Task.Run(() => ElevatedRunner.Run(cleanupArguments));
                     await Task.Run(() => Maintenance.RemoveInstallData(options));
-                    if (!options.KeepTap)
-                    {
-                        await Task.Run(() => ElevatedRunner.Run("--cleanup-tap"));
-                    }
-                    await Task.Run(() => ElevatedRunner.Run("--cleanup-spoofer"));
                 }
                 else
                 {
@@ -304,6 +334,10 @@ namespace Hebnix_Updater
                 }
                 ScanInstallation();
                 ApplyInstallationState();
+            }
+            catch (OperationCanceledException)
+            {
+                MessageBox.Show(this, "Administrator permission was declined, so the uninstall was cancelled. Nothing was removed.", "Uninstall cancelled", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception exception)
             {
@@ -453,13 +487,18 @@ namespace Hebnix_Updater
             }
         }
 
+        private void SetButtonsEnabled(bool enabled)
+        {
+            hebnixinstupdate.Enabled = enabled;
+            liteinstupdate.Enabled = enabled;
+            hebnixuninstall.Enabled = enabled;
+            liteuninstall.Enabled = enabled;
+            launchCleanup.Enabled = enabled;
+        }
+
         private void SetBusy(bool busy, ProgressBar activeProgressBar)
         {
-            hebnixinstupdate.Enabled = !busy;
-            liteinstupdate.Enabled = !busy;
-            hebnixuninstall.Enabled = !busy;
-            liteuninstall.Enabled = !busy;
-            launchCleanup.Enabled = !busy;
+            SetButtonsEnabled(!busy);
             HebnixPB.Visible = busy && activeProgressBar == HebnixPB;
             LitePB.Visible = busy && activeProgressBar == LitePB;
             if (busy)

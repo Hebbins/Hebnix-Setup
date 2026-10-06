@@ -73,26 +73,6 @@ namespace Hebnix_Updater.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
-        internal static System.Drawing.Bitmap Hebnix {
-            get {
-                object obj = ResourceManager.GetObject("Hebnix", resourceCulture);
-                return ((System.Drawing.Bitmap)(obj));
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized resource of type System.Drawing.Bitmap.
-        /// </summary>
-        internal static System.Drawing.Bitmap Hebnix_2 {
-            get {
-                object obj = ResourceManager.GetObject("Hebnix-2", resourceCulture);
-                return ((System.Drawing.Bitmap)(obj));
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized resource of type System.Drawing.Bitmap.
-        /// </summary>
         internal static System.Drawing.Bitmap Hebnix_2_0 {
             get {
                 object obj = ResourceManager.GetObject("Hebnix-2.0", resourceCulture);
@@ -103,29 +83,9 @@ namespace Hebnix_Updater.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
-        internal static System.Drawing.Bitmap Hebnix_Final {
-            get {
-                object obj = ResourceManager.GetObject("Hebnix-Final", resourceCulture);
-                return ((System.Drawing.Bitmap)(obj));
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized resource of type System.Drawing.Bitmap.
-        /// </summary>
         internal static System.Drawing.Bitmap Hebnix_Lite {
             get {
                 object obj = ResourceManager.GetObject("Hebnix-Lite", resourceCulture);
-                return ((System.Drawing.Bitmap)(obj));
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized resource of type System.Drawing.Bitmap.
-        /// </summary>
-        internal static System.Drawing.Bitmap Hebnix1 {
-            get {
-                object obj = ResourceManager.GetObject("Hebnix1", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
             }
         }

@@ -94,21 +94,12 @@
     <None Include="App.config" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="Resources\Hebnix.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="Resources\Hebnix1.png" />
-  </ItemGroup>
-  <ItemGroup>
     <None Include="Resources\discord-icon.png" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="Hebnix-2.ico" />
-    <Content Include="Hebnix-Final.ico" />
     <None Include="Resources\Hebnix-Lite.png" />
     <None Include="Resources\Hebnix-2.0.png" />
-    <None Include="Resources\Hebnix-2.png" />
-    <None Include="Resources\Hebnix-Final.png" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

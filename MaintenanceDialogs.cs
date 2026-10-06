@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.Threading.Tasks;
@@ -117,6 +118,10 @@ namespace Hebnix_Updater
                     await Task.Run(action);
                 }
             }
+            catch (OperationCanceledException)
+            {
+                // the user declined UAC, nothing ran
+            }
             catch (Exception exception)
             {
                 MaintenanceError.Show(this, exception.ToString());
@@ -140,9 +145,21 @@ namespace Hebnix_Updater
 
     internal static class ElevatedRunner
     {
-        public static void Run(string argument)
+        private const int ErrorCancelled = 1223;
+
+        public static void Run(params string[] arguments)
         {
-            using (var process = Process.Start(new ProcessStartInfo(Application.ExecutablePath, argument) { UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden }))
+            Process process;
+            try
+            {
+                process = Process.Start(new ProcessStartInfo(Application.ExecutablePath, string.Join(" ", arguments)) { UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden });
+            }
+            catch (Win32Exception exception) when (exception.NativeErrorCode == ErrorCancelled)
+            {
+                throw new OperationCanceledException("Administrator permission was declined.", exception);
+            }
+
+            using (process)
             {
                 if (process == null) throw new InvalidOperationException("Could not start elevated cleanup.");
                 process.WaitForExit();
