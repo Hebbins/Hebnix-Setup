@@ -14,14 +14,23 @@ namespace Hebnix_Updater
         [STAThread]
         static void Main(string[] args)
         {
-            if (args.Length == 1 && args[0] == "--cleanup-spoofer")
+            // the elevated cleanup flags can be combined so uninstall only needs one UAC prompt
+            var handledCleanup = false;
+            foreach (var arg in args)
             {
-                Maintenance.RemoveSpoofer();
-                return;
+                if (arg == "--cleanup-spoofer")
+                {
+                    Maintenance.RemoveSpoofer();
+                    handledCleanup = true;
+                }
+                else if (arg == "--cleanup-tap")
+                {
+                    Maintenance.RemoveMultiplayerTap();
+                    handledCleanup = true;
+                }
             }
-            if (args.Length == 1 && args[0] == "--cleanup-tap")
+            if (handledCleanup)
             {
-                Maintenance.RemoveMultiplayerTap();
                 return;
             }
             Application.EnableVisualStyles();
