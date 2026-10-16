@@ -41,6 +41,38 @@ function Install-Hebnix {
         $endpoint = '/download-hebnix'
     }
 
+    # no bar when output is piped or logged, the redraws would just be noise
+    $showProgress = -not [Console]::IsOutputRedirected
+
+    function Format-Size([double]$Bytes) {
+        if ($Bytes -ge 1GB) { return '{0:N1} GB' -f ($Bytes / 1GB) }
+        if ($Bytes -ge 1MB) { return '{0:N1} MB' -f ($Bytes / 1MB) }
+        if ($Bytes -ge 1KB) { return '{0:N0} KB' -f ($Bytes / 1KB) }
+        return "$Bytes B"
+    }
+
+    # one line redrawn in place, like winget: "  ===============  12.3 MB / 45.6 MB  3.2 MB/s"
+    # the bar character is built from its code point so the script stays plain ASCII
+    function Write-ProgressBar([double]$Fraction, [string]$Text) {
+        $width = 30
+        $filled = [Math]::Min($width, [int][Math]::Floor($Fraction * $width))
+        $bar = [string][char]0x2501
+        Write-Host "`r  " -NoNewline
+        Write-Host ($bar * $filled) -NoNewline -ForegroundColor Cyan
+        Write-Host ($bar * ($width - $filled)) -NoNewline -ForegroundColor DarkGray
+        Write-Host "  $Text    " -NoNewline
+    }
+
+    function Write-DownloadProgress([long]$Done, $Total, [double]$Seconds) {
+        $speed = if ($Seconds -gt 0) { "$(Format-Size ($Done / $Seconds))/s" } else { '' }
+        if ($Total) {
+            Write-ProgressBar ($Done / $Total) "$(Format-Size $Done) / $(Format-Size $Total)  $speed"
+        } else {
+            # no Content-Length, so there is nothing to fill a bar against
+            Write-Host "`r  $(Format-Size $Done)  $speed    " -NoNewline
+        }
+    }
+
     function Invoke-Download([string]$Url, [string]$Destination) {
         # HttpClient rather than Invoke-WebRequest: PowerShell 5.1 refuses to set Referer
         $client = New-Object System.Net.Http.HttpClient
@@ -55,7 +87,34 @@ function Install-Hebnix {
                 $expectedLength = $response.Content.Headers.ContentLength
                 $source = $response.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
                 $target = [System.IO.File]::Create($Destination)
-                try { $source.CopyTo($target) } finally { $target.Dispose(); $source.Dispose() }
+                $buffer = New-Object byte[] 81920
+                $downloaded = 0L
+                $timer = [Diagnostics.Stopwatch]::StartNew()
+                $lastDraw = -1000L
+                $drew = $false
+                try {
+                    while (($read = $source.Read($buffer, 0, $buffer.Length)) -gt 0) {
+                        $target.Write($buffer, 0, $read)
+                        $downloaded += $read
+                        # redraw at most 10 times a second, console writes are slow
+                        if ($showProgress -and $timer.ElapsedMilliseconds - $lastDraw -ge 100) {
+                            $lastDraw = $timer.ElapsedMilliseconds
+                            Write-DownloadProgress $downloaded $expectedLength $timer.Elapsed.TotalSeconds
+                            $drew = $true
+                        }
+                    }
+                    if ($showProgress) {
+                        Write-DownloadProgress $downloaded $expectedLength $timer.Elapsed.TotalSeconds
+                        $drew = $true
+                    }
+                } finally {
+                    $target.Dispose(); $source.Dispose()
+                    # end the bar's line, also when the download fails and a retry message follows
+                    if ($drew) { Write-Host '' }
+                }
+                if (-not $showProgress) {
+                    Write-Host "  Downloaded $(Format-Size $downloaded) in $([Math]::Round($timer.Elapsed.TotalSeconds, 1))s"
+                }
                 # the server sometimes drops the connection mid-file without an error
                 $actualLength = (Get-Item $Destination).Length
                 if ($expectedLength -and $actualLength -ne $expectedLength) {
@@ -88,8 +147,17 @@ function Install-Hebnix {
         New-Item -ItemType Directory -Force -Path $Destination | Out-Null
         $root = [System.IO.Path]::GetFullPath($Destination.TrimEnd('\') + '\')
         $archive = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
+        $total = $archive.Entries.Count
+        $done = 0
+        $timer = [Diagnostics.Stopwatch]::StartNew()
+        $lastDraw = -1000L
         try {
             foreach ($entry in $archive.Entries) {
+                $done++
+                if ($showProgress -and ($timer.ElapsedMilliseconds - $lastDraw -ge 100 -or $done -eq $total)) {
+                    $lastDraw = $timer.ElapsedMilliseconds
+                    Write-ProgressBar ($done / $total) "$done / $total files"
+                }
                 $target = [System.IO.Path]::GetFullPath((Join-Path $Destination $entry.FullName))
                 if (-not $target.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) {
                     throw "The download contains an unsafe path: $($entry.FullName)"
@@ -103,6 +171,7 @@ function Install-Hebnix {
             }
         } finally {
             $archive.Dispose()
+            if ($showProgress -and $total) { Write-Host '' }
         }
     }
 
@@ -152,7 +221,7 @@ function Install-Hebnix {
 
     $temporaryZip = Join-Path ([System.IO.Path]::GetTempPath()) ("Hebnix-" + [Guid]::NewGuid().ToString('N') + '.zip')
     try {
-        Write-Host '  Downloading (this can take a minute)...'
+        Write-Host "  Downloading $editionName $latestVersion..."
         Invoke-DownloadWithRetry "$apiBaseUrl$endpoint" $temporaryZip
         Write-Host '  Extracting...'
         Expand-ZipSafely $temporaryZip $installDirectory
