@@ -64,7 +64,8 @@ function Install-Hebnix {
     }
 
     function Write-DownloadProgress([long]$Done, $Total, [double]$Seconds) {
-        $speed = if ($Seconds -gt 0) { "$(Format-Size ($Done / $Seconds))/s" } else { '' }
+        # the first chunk lands almost instantly, so an early speed reading is nonsense
+        $speed = if ($Seconds -ge 0.5) { "$(Format-Size ($Done / $Seconds))/s" } else { '' }
         if ($Total) {
             Write-ProgressBar ($Done / $Total) "$(Format-Size $Done) / $(Format-Size $Total)  $speed"
         } else {
@@ -72,6 +73,8 @@ function Install-Hebnix {
             Write-Host "`r  $(Format-Size $Done)  $speed    " -NoNewline
         }
     }
+
+    $stallTimeoutSeconds = 30
 
     function Invoke-Download([string]$Url, [string]$Destination) {
         # HttpClient rather than Invoke-WebRequest: PowerShell 5.1 refuses to set Referer
@@ -93,7 +96,16 @@ function Install-Hebnix {
                 $lastDraw = -1000L
                 $drew = $false
                 try {
-                    while (($read = $source.Read($buffer, 0, $buffer.Length)) -gt 0) {
+                    while ($true) {
+                        # HttpClient.Timeout stops at the headers, so a server that stops
+                        # sending without closing the connection would hang a plain Read forever.
+                        # Give up on the connection instead, the retry gets a fresh one
+                        $readTask = $source.ReadAsync($buffer, 0, $buffer.Length)
+                        if (-not $readTask.Wait([TimeSpan]::FromSeconds($stallTimeoutSeconds))) {
+                            throw "download stalled (no data for $stallTimeoutSeconds seconds)"
+                        }
+                        $read = $readTask.GetAwaiter().GetResult()
+                        if ($read -le 0) { break }
                         $target.Write($buffer, 0, $read)
                         $downloaded += $read
                         # redraw at most 10 times a second, console writes are slow
