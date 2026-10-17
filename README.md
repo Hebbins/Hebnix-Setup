@@ -20,6 +20,21 @@ irm https://raw.githubusercontent.com/Hebbins/Hebnix-Setup/main/install-lite.ps1
 
 The script does the same as the Install button in setup: it downloads the latest build from `api.hebnix.com`, extracts it to `%AppData%\Hebnix`, creates Desktop and Start Menu shortcuts and records the installed version. It also installs Hebnix Setup to `%AppData%\Hebnix\updater\setup.exe` with a **Start Menu > Hebnix > Hebnix Setup** shortcut.
 
+**Hebnix portable**
+
+`cd` into the folder you want Hebnix in, then run:
+
+```powershell
+irm https://raw.githubusercontent.com/Hebbins/Hebnix-Setup/main/install-portable.ps1 | iex
+```
+
+This extracts Hebnix into the current folder and adds `portable.txt`, so Hebnix keeps its settings and data there instead of `%AppData%\Hebnix`. It creates no shortcuts and does not install Hebnix Setup. Run it again in the same folder to update. Delete the folder to remove it. It refuses your home folder, the Desktop, a drive root and Windows/Program Files, since Hebnix fills its folder with data folders:
+
+```powershell
+mkdir ~\Hebnix; cd ~\Hebnix
+irm https://raw.githubusercontent.com/Hebbins/Hebnix-Setup/main/install-portable.ps1 | iex
+```
+
 ## Uninstall and cleanup
 
 Open **Start Menu > Hebnix > Hebnix Setup** and use Uninstall or Cleanup. This works the same whether Hebnix was installed with setup or the one-line command.
