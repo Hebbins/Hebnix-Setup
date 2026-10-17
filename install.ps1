@@ -2,22 +2,30 @@
 #
 #   irm https://raw.githubusercontent.com/Hebbins/Hebnix-Setup/main/install.ps1 | iex
 #   irm https://raw.githubusercontent.com/Hebbins/Hebnix-Setup/main/install-lite.ps1 | iex
+#   irm https://raw.githubusercontent.com/Hebbins/Hebnix-Setup/main/install-portable.ps1 | iex
 #
 # Does the same thing as the Install button in setup.exe (MainForm.InstallOrUpdateAsync),
 # writing the same files, shortcuts and .inst entries, so the GUI can update, uninstall
 # and clean up a copy installed this way. It also drops setup.exe into the updater folder
 # and adds a "Hebnix Setup" Start Menu shortcut so that GUI is easy to find.
 #
+# -Portable instead extracts into the current folder (or -Destination) and adds
+# portable.txt, which makes Hebnix keep its
+# data next to the exe (hebnix-sdk paths::base_dir). It creates no shortcuts, writes no .inst
+# and skips setup.exe, so nothing outside that folder is touched.
+#
 # This runs inside the caller's session through iex, so it never calls `exit` and keeps
 # everything inside Install-Hebnix to avoid leaking variables.
 
 param(
     [ValidateSet('Hebnix', 'Lite')]
-    [string]$Edition = 'Hebnix'
+    [string]$Edition = 'Hebnix',
+    [switch]$Portable,
+    [string]$Destination
 )
 
 function Install-Hebnix {
-    param([string]$Edition)
+    param([string]$Edition, [switch]$Portable, [string]$Destination)
 
     $ErrorActionPreference = 'Stop'
     $ProgressPreference = 'SilentlyContinue'
@@ -30,6 +38,29 @@ function Install-Hebnix {
     $browserUserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     # HEBNIX_INSTALL_DIR is only for testing; setup.exe always uses %APPDATA%\Hebnix
     $installDirectory = if ($env:HEBNIX_INSTALL_DIR) { $env:HEBNIX_INSTALL_DIR } else { Join-Path $env:APPDATA 'Hebnix' }
+    if ($Portable) {
+        if ($Destination) {
+            $installDirectory = [System.IO.Path]::GetFullPath($Destination)
+        } else {
+            # iex runs in the caller's session, so this is wherever they cd'd to
+            $location = Get-Location
+            if ($location.Provider.Name -ne 'FileSystem') {
+                throw "cd into the folder you want Hebnix in first (the current location $location is not a folder)."
+            }
+            $installDirectory = $location.ProviderPath
+        }
+        # an admin PowerShell starts in System32 and a normal one in the home folder. Hebnix
+        # fills its folder with data folders, so make people pick one instead of spilling there
+        $trimmed = $installDirectory.TrimEnd('\')
+        $refused = @($env:USERPROFILE, [Environment]::GetFolderPath('DesktopDirectory'), [System.IO.Path]::GetPathRoot($installDirectory)) |
+            Where-Object { $_ -and $trimmed -ieq $_.TrimEnd('\') }
+        foreach ($systemFolder in @($env:windir, $env:ProgramFiles, ${env:ProgramFiles(x86)})) {
+            if ($systemFolder -and ($trimmed + '\').StartsWith($systemFolder.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) { $refused = $true }
+        }
+        if ($refused) {
+            throw "Not installing into $installDirectory. Make a folder for Hebnix and cd into it first, e.g.  mkdir ~\Hebnix; cd ~\Hebnix"
+        }
+    }
     $installStatePath = Join-Path $installDirectory '.inst'
     $liteExecutableNames = @('Hebnix Lite.exe', 'Hebnite Lite.exe')
 
@@ -213,7 +244,11 @@ function Install-Hebnix {
         [System.IO.File]::WriteAllLines($installStatePath, [string[]]@($lines))
     }
 
-    Write-Host "Installing $editionName" -ForegroundColor Cyan
+    if ($Portable) {
+        Write-Host "Installing $editionName (portable) to $installDirectory" -ForegroundColor Cyan
+    } else {
+        Write-Host "Installing $editionName" -ForegroundColor Cyan
+    }
 
     Write-Host '  Checking latest version...'
     $info = Invoke-RestMethod -Uri "$apiBaseUrl/info" -UserAgent 'Hebnix-Updater' -TimeoutSec 15 -UseBasicParsing
@@ -223,8 +258,13 @@ function Install-Hebnix {
 
     New-Item -ItemType Directory -Force -Path $installDirectory | Out-Null
 
+    $folderPrefix = $installDirectory.TrimEnd('\') + '\'
     foreach ($processName in @('Hebnix', 'Hebnix Lite', 'Hebnite Lite')) {
-        Get-Process -Name $processName -ErrorAction SilentlyContinue | ForEach-Object {
+        Get-Process -Name $processName -ErrorAction SilentlyContinue | Where-Object {
+            # a portable copy only replaces its own exe, so leave other copies running.
+            # Path is empty for processes we cannot inspect; skip those in portable mode
+            -not $Portable -or ($_.Path -and $_.Path.StartsWith($folderPrefix, [StringComparison]::OrdinalIgnoreCase))
+        } | ForEach-Object {
             Write-Host "  Closing $($_.ProcessName)..."
             $_.Kill()
             $_.WaitForExit(3000) | Out-Null
@@ -248,6 +288,19 @@ function Install-Hebnix {
     }
     if (-not $executableName) { throw "The download did not contain the $editionName executable." }
     $executablePath = Join-Path $installDirectory $executableName
+
+    if ($Portable) {
+        # its presence is all Hebnix checks; the text is for whoever opens the folder
+        $marker = Join-Path $installDirectory 'portable.txt'
+        if (-not (Test-Path $marker)) {
+            [System.IO.File]::WriteAllText($marker, "Hebnix keeps its settings and data in this folder while this file is here.`r`n")
+        }
+        Write-Host ''
+        Write-Host "$editionName $latestVersion (portable) installed to $installDirectory" -ForegroundColor Green
+        Write-Host "  Run $executableName from that folder. Settings and data stay in it."
+        Write-Host '  To update, run this command again in that folder. To remove it, delete the folder.'
+        return
+    }
 
     if ($env:HEBNIX_INSTALL_DIR) {
         # test installs keep their shortcuts out of the real Desktop and Start Menu
@@ -295,4 +348,4 @@ function Install-Hebnix {
     }
 }
 
-Install-Hebnix -Edition $Edition
+Install-Hebnix -Edition $Edition -Portable:$Portable -Destination $Destination
