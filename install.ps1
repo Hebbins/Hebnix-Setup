@@ -4,6 +4,8 @@
 #   irm https://raw.githubusercontent.com/Hebbins/Hebnix-Setup/main/install-lite.ps1 | iex
 #   irm https://raw.githubusercontent.com/Hebbins/Hebnix-Setup/main/install-portable.ps1 | iex
 #
+# To remove Hebnix again: uninstall.ps1 (irm .../uninstall.ps1 | iex)
+#
 # Does the same thing as the Install button in setup.exe (MainForm.InstallOrUpdateAsync),
 # writing the same files, shortcuts and .inst entries, so the GUI can update, uninstall
 # and clean up a copy installed this way. It also drops setup.exe into the updater folder
