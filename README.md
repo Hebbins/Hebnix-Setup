@@ -39,6 +39,22 @@ irm https://raw.githubusercontent.com/Hebbins/Hebnix-Setup/main/install-portable
 
 Open **Start Menu > Hebnix > Hebnix Setup** and use Uninstall or Cleanup. This works the same whether Hebnix was installed with setup or the one-line command.
 
+Or uninstall from PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/Hebbins/Hebnix-Setup/main/uninstall.ps1 | iex
+```
+
+This removes Hebnix and Hebnix Lite from `%AppData%\Hebnix`, however they were installed. Run it from inside a portable folder to remove that copy instead. In a portable folder it only deletes Hebnix's own files, and lists anything else it finds there.
+
+Besides what Setup's Uninstall does (restore patched and swapped game files, remove workshop maps, the spoofer's hosts lines and proxy, the TAP adapter and Epic's `-multihome` argument), it removes the spoofer's certificate and recovery tasks, the multiplayer service and firewall rules, the start-with-Windows entry and the `hebnix://` handler. It asks before starting, and offers to keep plugins, themes and `config.toml`. Steps that need admin share one UAC prompt, and declining it cancels the uninstall before anything is removed.
+
+Set `HEBNIX_UNINSTALL_DRYRUN=1` to list what it would remove without changing anything:
+
+```powershell
+$env:HEBNIX_UNINSTALL_DRYRUN = '1'; irm https://raw.githubusercontent.com/Hebbins/Hebnix-Setup/main/uninstall.ps1 | iex
+```
+
 ## Building
 
 Requirements: Visual Studio 2022 or Build Tools with the .NET Framework 4.8 targeting pack.
